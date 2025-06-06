@@ -39,4 +39,5 @@ You can view a live demo by opening the `index.html` file in any modern web brow
 1. **Download or clone this repository:**
 
    ```bash
-  https://github.com/Tan3459/3D-simulation-of-the-solar-system.git
+   git clone https://github.com/Tan3459/3D-simulation-of-the-solar-system.git
+   cd 3D-simulation-of-the-solar-system
