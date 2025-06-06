@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Solar System - Three.js</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #000;
+      color: white;
+      transition: background 0.5s, color 0.5s;
+    }
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(20, 20, 20, 0.8);
+      padding: 15px;
+      border-radius: 10px;
+      z-index: 1;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+    }
+    .control-group {
+      margin-bottom: 12px;
+    }
+    .control-group label {
+      display: block;
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    .control-group input[type=range] {
+      width: 150px;
+      height: 4px;
+      background: #444;
+      outline: none;
+      border-radius: 5px;
+      accent-color: #00ffff;
+    }
+    .control-group span {
+      font-size: 12px;
+      display: inline-block;
+      margin-top: 2px;
+    }
+    .toggle-btns {
+      margin-top: 10px;
+    }
+    .toggle-btns button {
+      background: #333;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      padding: 8px 12px;
+      margin-right: 6px;
+      cursor: pointer;
+    }
+    .tooltip {
+      position: absolute;
+      padding: 6px 10px;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      border-radius: 5px;
+      font-size: 13px;
+      pointer-events: none;
+      white-space: nowrap;
+      display: none;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <div class="toggle-btns">
+      <button id="pauseBtn">Pause</button>
+      <button id="themeToggle">Toggle Theme</button>
+    </div>
+  </div>
+  <div id="tooltip" class="tooltip"></div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+  <script>
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Stars background
+    const starGeometry = new THREE.BufferGeometry();
+    const starCount = 5000;
+    const starVertices = [];
+    for (let i = 0; i < starCount; i++) {
+      starVertices.push((Math.random() - 0.5) * 2000, (Math.random() - 0.5) * 2000, (Math.random() - 0.5) * 2000);
+    }
+    starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+    const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.8 });
+    const stars = new THREE.Points(starGeometry, starMaterial);
+    scene.add(stars);
+
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    scene.add(ambientLight);
+
+    const pointLight = new THREE.PointLight(0xffffff, 2.5, 150);
+    pointLight.position.set(0, 0, 0);
+    scene.add(pointLight);
+
+    const sun = new THREE.Mesh(
+      new THREE.SphereGeometry(4, 64, 64),
+      new THREE.MeshBasicMaterial({ color: 0xFFFF00 })
+    );
+    scene.add(sun);
+
+    const tooltip = document.getElementById('tooltip');
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const planetsData = [
+      { name: 'Mercury', color: 0xaaaaaa, distance: 5, size: 0.8, speed: 0.04 },
+      { name: 'Venus', color: 0xffcc00, distance: 7, size: 1.1, speed: 0.035 },
+      { name: 'Earth', color: 0x0000ff, distance: 9, size: 1.2, speed: 0.03 },
+      { name: 'Mars', color: 0xff3300, distance: 11, size: 1.1, speed: 0.025 },
+      { name: 'Jupiter', color: 0xff9966, distance: 14, size: 2.2, speed: 0.02 },
+      { name: 'Saturn', color: 0xffff99, distance: 17, size: 2.0, speed: 0.015 },
+      { name: 'Uranus', color: 0x66ffff, distance: 20, size: 1.6, speed: 0.01 },
+      { name: 'Neptune', color: 0x3366ff, distance: 23, size: 1.6, speed: 0.008 }
+    ];
+
+    const planets = [];
+    const controlsDiv = document.getElementById('controls');
+
+    planetsData.forEach(data => {
+      const geometry = new THREE.SphereGeometry(data.size, 32, 32);
+      const material = new THREE.MeshStandardMaterial({ color: data.color });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.userData = { name: data.name };
+      scene.add(mesh);
+
+      const orbitGeometry = new THREE.RingGeometry(data.distance - 0.02, data.distance + 0.02, 64);
+      const orbitMaterial = new THREE.MeshBasicMaterial({ color: 0x444444, side: THREE.DoubleSide });
+      const orbit = new THREE.Mesh(orbitGeometry, orbitMaterial);
+      orbit.rotation.x = Math.PI / 2;
+      scene.add(orbit);
+
+      planets.push({
+        name: data.name,
+        mesh: mesh,
+        angle: Math.random() * Math.PI * 2,
+        distance: data.distance,
+        speed: data.speed
+      });
+
+      const group = document.createElement('div');
+      group.className = 'control-group';
+
+      const labelEl = document.createElement('label');
+      labelEl.textContent = `${data.name} Speed`;
+
+      const range = document.createElement('input');
+      range.type = 'range';
+      range.min = '0.001';
+      range.max = '0.1';
+      range.step = '0.001';
+      range.value = data.speed;
+      range.id = data.name;
+
+      const valueDisplay = document.createElement('span');
+      valueDisplay.textContent = `(${data.speed})`;
+
+      range.addEventListener('input', () => {
+        valueDisplay.textContent = `(${range.value})`;
+      });
+
+      group.appendChild(labelEl);
+      group.appendChild(range);
+      group.appendChild(valueDisplay);
+      controlsDiv.appendChild(group);
+    });
+
+    camera.position.set(0, 30, 50);
+    camera.lookAt(0, 0, 0);
+
+    let animationRunning = true;
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (animationRunning) {
+        planets.forEach(planet => {
+          const slider = document.getElementById(planet.name);
+          if (slider) planet.speed = parseFloat(slider.value);
+          planet.angle += planet.speed;
+          planet.mesh.position.x = Math.cos(planet.angle) * planet.distance;
+          planet.mesh.position.z = Math.sin(planet.angle) * planet.distance;
+        });
+      }
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(planets.map(p => p.mesh));
+
+      if (intersects.length > 0) {
+        const intersected = intersects[0].object;
+        tooltip.style.display = 'block';
+        tooltip.textContent = intersected.userData.name;
+        tooltip.style.left = `${event.clientX + 10}px`;
+        tooltip.style.top = `${event.clientY - 20}px`;
+      } else {
+        tooltip.style.display = 'none';
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    window.addEventListener('mousemove', event => {
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    });
+
+    document.getElementById('pauseBtn').addEventListener('click', () => {
+      animationRunning = !animationRunning;
+      document.getElementById('pauseBtn').textContent = animationRunning ? 'Pause' : 'Resume';
+    });
+
+    document.getElementById('themeToggle').addEventListener('click', () => {
+      if (document.body.style.background === 'rgb(255, 255, 255)') {
+        document.body.style.background = '#000';
+        document.body.style.color = 'white';
+      } else {
+        document.body.style.background = '#fff';
+        document.body.style.color = '#000';
+      }
+    });
+  </script>
+</body>
+</html>
